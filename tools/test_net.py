@@ -90,22 +90,9 @@ def perform_test(test_loader: torch.utils.data.DataLoader, model, test_meter, cf
                 # Query-Vision
                 query_tokens_cls = model.query_tokens.expand(rgb_embeds.shape[0], -1, -1)
 
-                # encoder_hidden_states = [coord_embeds, rgb_embeds]
-                # encoder_attention_mask = [coord_atts, rgb_atts]
                 encoder_hidden_states = torch.cat([coord_embeds, rgb_embeds], dim=1)
                 encoder_attention_mask = torch.cat([coord_atts, rgb_atts], dim=1)
                 encoder_hidden_states = model.coord_rgb_add_embedding(encoder_hidden_states, coord_embeds.shape[1], rgb_embeds.shape[1])
-
-                # query_output = model.language_encoder(
-                #     query_embeds=query_tokens_cls,
-                #     encoder_hidden_states=encoder_hidden_states,
-                #     encoder_attention_mask=encoder_attention_mask,
-                #     # use_cache=True, # TODO 不使用cache
-                #     return_dict=True,
-                # )
-                # query_feats = F.normalize(query_output.last_hidden_state, dim=-1)  # [32, 32, 768]
-                # cls_feat = query_feats.mean(dim=1)  # [32, 768]
-                # cls_result = model.classifier(cls_feat)  # [32, 174]
                 cls_result = model.forward_classification(encoder_hidden_states, encoder_attention_mask, query_tokens_cls)
 
             if cfg.TEST.ADD_SOFTMAX:
@@ -117,189 +104,12 @@ def perform_test(test_loader: torch.utils.data.DataLoader, model, test_meter, cf
                 sample_indexes = sample_indexes.cpu()
 
             test_meter.iter_toc()
-            # test_meter.update_stats(cls_result.detach(),
-            #                         labels.detach(),
-            #                         sample_indexes.detach(),
-            #                         )
             test_meter.update_stats(
                 cls_result.detach(), labels.detach(), video_index.detach(),
             )
             test_meter.log_iter_stats(cur_iter)
             test_meter.iter_tic()
         test_meter.finalize_metrics()
-
-        # if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-        #     model = model.module
-        # device = torch.device("cuda")
-        #
-        # texts = list(test_loader.dataset.bbox_dataset.all_text2id.keys())
-        # num_text = len(texts)  # 174
-        #
-        # assert num_text == cfg.MODEL.NUM_CLASSES, "num of class does not match"
-        #
-        # text_ids = []
-        # text_embeds = []
-        # text_atts = []
-        # text_label_ids = []
-        #
-        # text_bs = cfg.TEST.BATCH_SIZE  # 使用测试设置的batch size
-        # for i in range(0, num_text, text_bs):  # 根据 text_bs 取样
-        #     text = texts[i: min(num_text, i + text_bs)]  # 拿到 第i个 text_bs
-        #     for t in text:
-        #         text_label_id = test_loader.dataset.get_label_id(t)
-        #         text_label_ids.append(text_label_id)
-        #
-        #     text_input = model.tokenizer(text, padding='max_length', truncation=True, max_length=35, return_tensors="pt").to(device)
-        #     text_output = model.language_encoder(text_input.input_ids, attention_mask=text_input.attention_mask, mode='text')
-        #     text_embed = F.normalize(model.language_proj(text_output.last_hidden_state[:, 0, :]), dim=-1)
-        #
-        #     text_embeds.append(text_embed)
-        #     text_ids.append(text_input.input_ids)
-        #     text_atts.append(text_input.attention_mask)
-        #
-        # text_embeds = torch.cat(text_embeds, dim=0)  # [174, 512]
-        # text_ids = torch.cat(text_ids, dim=0)
-        # text_atts = torch.cat(text_atts, dim=0)
-        # text_ids[:, 0] = model.tokenizer.enc_token_id
-        #
-        # # other data
-        # all_labels = []
-        # all_indexes = []
-        #
-        # # init 分数矩阵
-        # scores_r2t = torch.full(
-        #     (len(test_loader.dataset.bbox_dataset.all_vision) * (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
-        #      len(texts)), -100.0).cuda()  # [22659, 174]
-        # scores_c2t = torch.full(
-        #     (len(test_loader.dataset.bbox_dataset.all_vision) * (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
-        #      len(texts)), -100.0).cuda()  # [22659, 174]
-        # scores_mix = torch.full(
-        #     (len(test_loader.dataset.bbox_dataset.all_vision) * (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
-        #      len(texts)), -100.0).cuda()  # [22659, 174]
-        # for cur_iter, (inputs, labels, sample_indexes, meta) in enumerate(test_loader):
-        #     # if cur_iter >= 200:  # TODO:删除
-        #     #     break
-        #     if cfg.NUM_GPUS:
-        #         # Transferthe data to the current GPU device.
-        #         if isinstance(inputs, (list,)):
-        #             for i in range(len(inputs)):
-        #                 inputs[i] = inputs[i].cuda(non_blocking=True)
-        #         else:
-        #             inputs = inputs.cuda(non_blocking=True)
-        #         labels = labels.cuda()
-        #         sample_indexes = sample_indexes.cuda()
-        #         for key, val in meta.items():
-        #             if isinstance(val, (list,)):
-        #                 for i in range(len(val)):
-        #                     if not isinstance(val[i], str):
-        #                         val[i] = val[i].cuda(non_blocking=True)
-        #             else:
-        #                 meta[key] = val.cuda(non_blocking=True)
-        #     all_labels.append(labels)
-        #     all_indexes.append(sample_indexes)
-        #
-        #     test_meter.data_toc()
-        #
-        #     rgb_feat = model.rgb_encoder(inputs)  # [B*NUM_SAMPLE 1+T 768]
-        #     # rgb_feat = rgb_feat.unsqueeze(1)  # [B*NUM_SAMPLE 1 D] 维度增加 TODO：采用cls token的全局特征信息
-        #     rgb_embed = F.normalize(model.rgb_proj(rgb_feat[:, 0, :]), dim=-1)  # [B*NUM_SAMPLE, 512]
-        #
-        #     coord_feat = model.coord_encoder(meta["box_categories"], meta["box_tensors"])  #
-        #     coord_feat = model.rgb_coord_uniform_proj(coord_feat)  # [32, 33, 768]
-        #     # coord_atts = torch.ones(coord_embeds.size()[:-1], dtype=torch.long).cuda()  #
-        #     coord_embed = F.normalize(model.coord_proj(coord_feat[:, 0, :]), dim=-1)  # [32, 512]
-        #
-        #     # 计算相似度矩阵
-        #     sims_r2t = rgb_embed @ text_embeds.t()  # [32, 174]
-        #     sims_c2t = coord_embed @ text_embeds.t()  # [32, 174]
-        #
-        #     assert sims_r2t.shape == sims_c2t.shape
-        #     # k_test = sims_r2t.shape[1]
-        #     for index in range(sims_r2t.shape[0]):
-        #         coord_feat_repeat = coord_feat[index].repeat(text_embeds.shape[0], 1, 1).to(device)
-        #         coord_att_repeat = torch.ones(coord_feat_repeat.size()[:-1], dtype=torch.long).to(device)
-        #
-        #         rgb_feat_repeat = rgb_feat[index].repeat(text_embeds.shape[0], 1, 1).to(device)
-        #         rgb_att_repeat = torch.ones(rgb_feat_repeat.size()[:-1], dtype=torch.long).to(device)
-        #
-        #         encoder_hidden_states = [coord_feat_repeat, rgb_feat_repeat]
-        #         encoder_attention_mask = [coord_att_repeat, rgb_att_repeat]
-        #
-        #         output = model.language_encoder(text_ids,
-        #                                         attention_mask=text_atts,
-        #                                         encoder_hidden_states=encoder_hidden_states,
-        #                                         encoder_attention_mask=encoder_attention_mask,
-        #                                         return_dict=True,
-        #                                         mode='multimodal'
-        #                                         )
-        #         score = model.vtm_head(output.last_hidden_state[:, 0, :])[:, 1]
-        #
-        #         scores_c2t[cur_iter * test_loader.batch_size + index] = sims_c2t[index] + score  # [174]
-        #         scores_r2t[cur_iter * test_loader.batch_size + index] = sims_r2t[index] + score  # [174]
-        #         scores_mix[cur_iter * test_loader.batch_size + index] = sims_c2t[index] + sims_r2t[index] + score  # [174]
-        #
-        #     test_meter.iter_toc()  # measure allreduce for this meter
-        #     test_meter.log_iter_stats(cur_iter, len(test_loader), "cal_sims")
-        #     test_meter.iter_tic()
-        #
-        # all_labels = torch.cat(all_labels, dim=0)
-        # all_indexes = torch.cat(all_indexes, dim=0)
-        #
-        # # scores_mix = scores_c2t + scores_r2t  # [67977, 174]
-        #
-        # if cfg.TEST.ADD_SOFTMAX:
-        #     scores_r2t = scores_r2t.softmax(dim=-1)
-        #     scores_c2t = scores_c2t.softmax(dim=-1)
-        #     scores_mix = scores_mix.softmax(dim=-1)
-        #
-        # # BLIP 算法
-        # r1_r2t, r5_r2t = fusion_acc(scores_r2t.cpu().numpy(),
-        #                             test_loader.dataset.bbox_dataset.vision2text,
-        #                             (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS))
-        # r1_c2t, r5_c2t = fusion_acc(scores_c2t.cpu().numpy(),
-        #                             test_loader.dataset.bbox_dataset.vision2text,
-        #                             (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS))
-        # r1_mix, r5_mix = fusion_acc(scores_mix.cpu().numpy(),
-        #                             test_loader.dataset.bbox_dataset.vision2text,
-        #                             (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS))
-        #
-        # # 重新排列 最后维度的排列顺序
-        # scores_r2t_sorted = torch.zeros_like(scores_r2t, dtype=scores_r2t.dtype, device=scores_r2t.device)
-        # scores_c2t_sorted = torch.zeros_like(scores_c2t, dtype=scores_c2t.dtype, device=scores_c2t.device)
-        # text_sort_index = test_loader.dataset.bbox_dataset.all_text2label_id  # 根据 label 进行排序
-        # assert len(text_sort_index) == scores_r2t_sorted.shape[1]
-        # for i, idx in enumerate(text_sort_index):
-        #     scores_r2t_sorted[:, idx] = scores_r2t[:, i]
-        #     scores_c2t_sorted[:, idx] = scores_c2t[:, i]
-        #
-        # rgb_preds = scores_r2t_sorted  # [67977, 174]
-        # coord_preds = scores_c2t_sorted  # [67977, 174]
-        # if cfg.TEST.ADD_SOFTMAX:
-        #     rgb_preds = rgb_preds.softmax(dim=-1)
-        #     coord_preds = coord_preds.softmax(dim=-1)
-        #
-        # if cfg.NUM_GPUS:
-        #     rgb_preds = rgb_preds.cpu()
-        #     coord_preds = coord_preds.cpu()
-        #     all_indexes = all_indexes.cpu()  # [168]
-        #     all_labels = all_labels.cpu()  # [168]
-        #
-        # test_meter.update_stats(
-        #     rgb_preds.detach(), coord_preds.detach(), all_labels.detach(), all_indexes.detach()
-        # )
-        # test_meter.finalize_metrics()
-        #
-        # logger.info(f"r1_r2t: {r1_r2t}   r1_c2t: {r1_c2t}   r1_mix: {r1_mix}")
-        # logger.info(f"r5_r2t: {r5_r2t}   r5_c2t: {r5_c2t}   r5_mix: {r5_mix}")
-        #
-        # print("Pause")
-        # while True: pass
-
-        #############################################################
-        #############################################################
-        #############################################################
-        #############################################################
-        #############################################################
 
     else:
         for cur_iter, (inputs, labels, video_idx, meta) in enumerate(test_loader):
@@ -450,11 +260,11 @@ def test(cfg):
         # Create meters for multi-view testing.
         test_meter = TestMeter(
             test_loader.dataset.num_videos
-            // (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),  # 样本数量
-            cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS,  # clip数量
-            cfg.MODEL.NUM_CLASSES,  # 类别数量
-            len(test_loader),  # iter 数量
-            cfg.DATA.ENSEMBLE_METHOD,  # 计算方式 sum or max
+            // (cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS),
+            cfg.TEST.NUM_ENSEMBLE_VIEWS * cfg.TEST.NUM_SPATIAL_CROPS,
+            cfg.MODEL.NUM_CLASSES,
+            len(test_loader),
+            cfg.DATA.ENSEMBLE_METHOD,
         )
 
     # Set up writer for logging to Tensorboard format.

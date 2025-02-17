@@ -304,7 +304,7 @@ class Fusion(nn.Module):
             query_embeds=query_tokens,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
-            # use_cache=True, # TODO 不使用cache
+            # use_cache=True,
             return_dict=True,
         )
         query_feats = F.normalize(self.query_proj(query_output.last_hidden_state), dim=-1)  # [64, 32, 512]
@@ -412,7 +412,7 @@ class Fusion(nn.Module):
                                            )
 
         vl_embeddings = output_vtm.last_hidden_state[:, :query_tokens_vtm.size(1), :]
-        vl_output = self.vtm_head(vl_embeddings).mean(dim=1)  # TODO: 取平均的方式
+        vl_output = self.vtm_head(vl_embeddings).mean(dim=1)
 
         vtm_labels = torch.cat([torch.ones(bs, dtype=torch.long, device=device), torch.zeros(2 * bs, dtype=torch.long, device=device)], dim=0)
         loss_vtm = F.cross_entropy(vl_output, vtm_labels)
@@ -442,7 +442,7 @@ class Fusion(nn.Module):
             query_embeds=query_tokens_cls,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
-            # use_cache=True, # TODO 不使用cache
+            # use_cache=True,
             return_dict=True,
         )
         query_feats_cls = query_output_cls.last_hidden_state
@@ -450,7 +450,7 @@ class Fusion(nn.Module):
         cls_output = self.classifier(query_feats_cls)
 
         if self.cfg.FUSION.NUM_QUERY_TOKEN > 1:
-            cls_result = cls_output.mean(dim=1)  # TODO 取平均/取max
+            cls_result = cls_output.mean(dim=1)
         else:
             cls_result = cls_output.squeeze()
 

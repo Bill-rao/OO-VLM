@@ -9,11 +9,6 @@ from collections import OrderedDict
 from functools import partial
 from typing import Callable, List, Optional, Sequence, Tuple, Union
 
-# from timm.layers import PatchEmbed, Mlp, DropPath, trunc_normal_, lecun_normal_, resample_patch_embed, \
-#     resample_abs_pos_embed, RmsNorm, PatchDropout, use_fused_attn, SwiGLUPacked
-
-# from model.r_transformer_3 import Transformer_Bolck
-
 from .r_transformer import TransformerEncoder as Encoder
 from .r_transformer import TransformerEncoderLayer as EncoderLayer
 
@@ -111,7 +106,7 @@ def encode_onehot(labels):
     classes = set(labels)
     classes_dict = {c: np.identity(len(classes))[i, :] for i, c in
                     enumerate(classes)}  # {'11': array([1., 0., 0.])}
-    labels_onehot = np.array(list(map(classes_dict.get, labels)), dtype=np.int32)  # 将所有array([1., 0., 0.])，放到一个列表里面 [[1 0 0], [0 1 0], [0 0 1]]
+    labels_onehot = np.array(list(map(classes_dict.get, labels)), dtype=np.int32)
     return labels_onehot
 
 
@@ -174,7 +169,6 @@ class VideoModelCoord(nn.Module):
         edges = np.ones(self.nr_boxes) - np.eye(self.nr_boxes)
         self.send_edges = np.where(edges)[0]
         self.recv_edges = np.where(edges)[1]
-        # self.edge2node_mat = nn.Parameter(torch.FloatTensor(encode_onehot(self.recv_edges).transpose()), requires_grad=True)
         self.edge2node_mat = nn.Parameter(torch.tensor(encode_onehot(self.recv_edges).transpose(), dtype=torch.float32), requires_grad=True)
 
         # For GNN
@@ -222,17 +216,12 @@ class VideoModelCoord(nn.Module):
         scale = self.coord_feature_dim ** -0.5
         self.spatial_feature_token = nn.Parameter(scale * torch.randn(1, 1, self.transformer_feature_dim))
 
-        # self.v1_sptial_feature_token = nn.Parameter(torch.randn(1, 1, self.coord_feature_dim))
-        # self.v2_sptial_feature_token = nn.Parameter(torch.randn(1, 1, self.coord_feature_dim))
-
         self.v1_temporal_feature_token = nn.Parameter(scale * torch.randn(1, 1, self.transformer_feature_dim))
         # self.p1_temporal_feature_token = nn.Parameter(scale * torch.randn(1, 1, self.coord_feature_dim))
 
-        # TODO:可以试试用 nn.Embedding 来实现位置嵌入-类似bert
         self.spatial_embedding = nn.Parameter(torch.randn(1, self.nr_edges + self.nr_boxes, self.transformer_feature_dim) * .02)
         self.temporal_embedding = nn.Parameter(torch.randn(1, self.nr_frames, self.transformer_feature_dim) * .02)
 
-        # 分类层
         self.classifier = nn.Sequential(
             nn.LayerNorm(self.transformer_feature_dim),
             # nn.Dropout(head_drop),
@@ -276,7 +265,6 @@ class VideoModelCoord(nn.Module):
             old_shape = edge_embeddings.shape
             tmp_embeddings = edge_embeddings.view(old_shape[0], old_shape[1], -1)
             incoming = torch.matmul(self.edge2node_mat, tmp_embeddings).view(old_shape[0], -1, old_shape[2], old_shape[3])
-            # print('incoming ', incoming.shape)
         else:
             incoming = torch.matmul(self.edge2node_mat, edge_embeddings)
         return incoming / (self.nr_boxes - 1)

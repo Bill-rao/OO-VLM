@@ -65,9 +65,6 @@ def train_epoch(
 
     for cur_iter, (inputs, labels, indexes, meta) in enumerate(train_loader):
         # Transfer the data to the current GPU device.
-        # if cur_iter >= 40: # TODO 删除
-        #     break
-
         if cfg.NUM_GPUS:
             if isinstance(inputs, (list,)):
                 for i in range(len(inputs)):
@@ -83,15 +80,13 @@ def train_epoch(
                 else:
                     meta[key] = val.cuda(non_blocking=True)
 
-        # 判断当前iter是否需要进行梯度累积 True则不更新梯度
         if cfg.TRAIN.GRADIENT_ACCUMULATE and (cur_iter + 1) % cfg.TRAIN.GRADIENT_ACCUMULATE == 0:
             is_need_gradient_accumulate = True
         else:
             is_need_gradient_accumulate = False
         # is_need_gradient_accumulate = False if (not cfg.TRAIN.GRADIENT_ACCUMULATE and (cur_iter + 1) % cfg.TRAIN.GRADIENT_ACCUMULATE != 0) else True
-        # logger.info(f"is_need_gradient_accumulate: {is_need_gradient_accumulate} iter:{cur_iter}")
         # Update the learning rate.
-        if not is_need_gradient_accumulate:  # 每个梯度累积的 minibatch 的训练参数保持不变
+        if not is_need_gradient_accumulate:
             lr = optim.get_epoch_lr(cur_epoch + float(cur_iter) / data_size, cfg)
             optim.set_lr(optimizer, lr)
 
@@ -120,7 +115,6 @@ def train_epoch(
             else:
                 if cfg.MODEL.MODEL_NAME.lower() == "coord":
                     preds = model(meta["box_categories"], meta["box_tensors"])
-                    # logger.info(f"preds: {preds.shape}")
                 else:
                     preds = model(inputs, indexes, meta)
 
@@ -143,11 +137,10 @@ def train_epoch(
         loss_scaler(loss, optimizer, clip_grad=cfg.SOLVER.CLIP_GRADIENT,
                     parameters=model.parameters(), create_graph=is_second_order)
         if is_need_gradient_accumulate:
-            # logger.info(f"iter:{cur_iter} skip loss")
             train_meter.iter_toc()  # measure allreduce for this meter
             train_meter.log_iter_stats(cur_epoch, cur_iter)
             train_meter.iter_tic()
-            continue  # 梯度累计过程，无需进行记录
+            continue
 
         if cfg.MIXUP.ENABLE:
             _top_max_k_vals, top_max_k_inds = torch.topk(
@@ -174,9 +167,9 @@ def train_epoch(
                 )
         if cfg.FUSION.ENABLE:
             if cfg.NUM_GPUS > 1:
-                [loss] = du.all_reduce([loss])  # 获取所有loss
-                [loss_vtc] = du.all_reduce([loss_vtc])  # 获取所有loss
-                [loss_vtm] = du.all_reduce([loss_vtm])  # 获取所有loss
+                [loss] = du.all_reduce([loss])
+                [loss_vtc] = du.all_reduce([loss_vtc])
+                [loss_vtm] = du.all_reduce([loss_vtm])
                 [cls_loss] = du.all_reduce([cls_loss])
             loss = loss.item()
             loss_vtc = loss_vtc.item()
@@ -279,9 +272,6 @@ def eval_epoch(val_loader, model, val_meter, loss_scaler, cur_epoch, cfg, writer
             model = model.module
         device = torch.device("cuda")
         for cur_iter, (inputs, labels, indexes, meta) in enumerate(val_loader):
-            # if cur_iter > 40:  # TODO:删除
-            #     break
-            # logger.info(f"val iter: {cur_iter}")
             if cfg.NUM_GPUS:
                 # Transferthe data to the current GPU device.
                 if isinstance(inputs, (list,)):
@@ -313,23 +303,9 @@ def eval_epoch(val_loader, model, val_meter, loss_scaler, cur_epoch, cfg, writer
                 # Query-Vision
                 query_tokens_cls = model.query_tokens.expand(rgb_embeds.shape[0], -1, -1)
 
-                # encoder_hidden_states = [coord_embeds, rgb_embeds]
-                # encoder_attention_mask = [coord_atts, rgb_atts]
                 encoder_hidden_states = torch.cat([coord_embeds, rgb_embeds], dim=1)
                 encoder_attention_mask = torch.cat([coord_atts, rgb_atts], dim=1)
                 encoder_hidden_states = model.coord_rgb_add_embedding(encoder_hidden_states, coord_embeds.shape[1], rgb_embeds.shape[1])
-
-                # query_output_cls = model.language_encoder(
-                #     query_embeds=query_tokens_cls,
-                #     encoder_hidden_states=encoder_hidden_states,
-                #     encoder_attention_mask=encoder_attention_mask,
-                #     # use_cache=True, # TODO 不使用cache
-                #     return_dict=True,
-                # )
-                # # query_feats = F.normalize(query_output.last_hidden_state, dim=-1)  # [32, 32, 768]
-                # query_feats_cls = query_output_cls.last_hidden_state
-                # cls_feat = query_feats_cls.mean(dim=1)  # [32, 768]
-                # cls_result = model.classifier(cls_feat)  # [32, 174]
                 cls_result = model.forward_classification(encoder_hidden_states, encoder_attention_mask, query_tokens_cls)
 
             num_topks_correct = metrics.topks_correct(cls_result, labels, (1, 5))
@@ -351,170 +327,6 @@ def eval_epoch(val_loader, model, val_meter, loss_scaler, cur_epoch, cfg, writer
             val_meter.log_iter_stats(cur_epoch, cur_iter)
             val_meter.iter_tic()
         flag = val_meter.log_epoch_stats(cur_epoch)
-
-        # texts = list(val_loader.dataset.bbox_dataset.all_text2id.keys())
-        # num_text = len(texts)  # 174
-        #
-        # assert num_text == cfg.MODEL.NUM_CLASSES, "num of class does not match"
-        #
-        # text_ids = []
-        # text_embeds = []
-        # text_atts = []
-        #
-        # text_bs = cfg.TRAIN.BATCH_SIZE  # 使用测试设置的batch size
-        # for i in range(0, num_text, text_bs):  # 根据 text_bs 取样
-        #     text = texts[i: min(num_text, i + text_bs)]  # 拿到 第i个 text_bs
-        #     text_input = model.tokenizer(text, padding='max_length', truncation=True, max_length=cfg.FUSION.MAX_WORDS, return_tensors="pt").to(device)
-        #     text_output = model.language_encoder(text_input.input_ids, attention_mask=text_input.attention_mask, return_dict=True)
-        #     text_embed = F.normalize(model.language_proj(text_output.last_hidden_state[:, 0, :]), dim=-1)
-        #
-        #     text_embeds.append(text_embed)
-        #     text_ids.append(text_input.input_ids)
-        #     text_atts.append(text_input.attention_mask)
-        #
-        # text_embeds = torch.cat(text_embeds, dim=0)  # [174, 512]
-        # text_ids = torch.cat(text_ids, dim=0)  # [174, 30]
-        # text_atts = torch.cat(text_atts, dim=0)  # [174, 30]
-        # # text_ids[:, 0] = model.tokenizer.enc_token_id
-        #
-        # # init 分数矩阵
-        # scores_q2t = torch.full((len(val_loader.dataset.bbox_dataset.all_vision), len(texts)), -100.0).cuda()  # [22659, 174]
-        # scores_vtm = torch.full((len(val_loader.dataset.bbox_dataset.all_vision), len(texts)), -100.0).cuda()  # [22659, 174]
-        #
-        # for cur_iter, (inputs, labels, indexes, meta) in enumerate(val_loader):
-        #     # if cur_iter > 40:  # TODO:删除
-        #     #     break
-        #     # logger.info(f"val iter: {cur_iter}")
-        #     if cfg.NUM_GPUS:
-        #         # Transferthe data to the current GPU device.
-        #         if isinstance(inputs, (list,)):
-        #             for i in range(len(inputs)):
-        #                 inputs[i] = inputs[i].cuda(non_blocking=True)
-        #         else:
-        #             inputs = inputs.cuda(non_blocking=True)
-        #         labels = labels.cuda()
-        #         for key, val in meta.items():
-        #             if isinstance(val, (list,)):
-        #                 for i in range(len(val)):
-        #                     if not isinstance(val[i], str):
-        #                         val[i] = val[i].cuda(non_blocking=True)
-        #             else:
-        #                 meta[key] = val.cuda(non_blocking=True)
-        #     val_meter.data_toc()
-        #
-        #     rgb_feat = model.rgb_ln(model.rgb_encoder(inputs))  # [B*NUM_SAMPLE 1+T 768]
-        #     rgb_atts = torch.ones(rgb_feat.size()[:-1], dtype=torch.long).cuda()  # [B*NUM_SAMPLE 1+T]
-        #     # rgb_feat = rgb_feat.unsqueeze(1)  # [B*NUM_SAMPLE 1 D] 维度增加 TODO：采用cls token的全局特征信息
-        #     # rgb_embed = F.normalize(model.rgb_proj(rgb_feat[:, 0, :]), dim=-1)  # [B*NUM_SAMPLE, 512]
-        #
-        #     coord_feat = model.coord_encoder(meta["box_categories"], meta["box_tensors"])  #
-        #     coord_feat = model.rgb_coord_uniform_proj(coord_feat)  # [32, 33, 768]
-        #     coord_atts = torch.ones(coord_feat.size()[:-1], dtype=torch.long).cuda()  #
-        #     # coord_embed = F.normalize(model.coord_proj(coord_feat[:, 0, :]), dim=-1)  # [32, 512]
-        #
-        #     query_tokens = model.query_tokens.expand(rgb_feat.shape[0], -1, -1)
-        #
-        #     encoder_hidden_states = [coord_feat, rgb_feat]
-        #     encoder_attention_mask = [coord_atts, rgb_atts]
-        #     query_output = model.language_encoder(
-        #         query_embeds=query_tokens,
-        #         encoder_hidden_states=encoder_hidden_states,
-        #         encoder_attention_mask=encoder_attention_mask,
-        #         # use_cache=True, # TODO 不使用cache
-        #         return_dict=True,
-        #     )
-        #     query_feats = F.normalize(model.query_proj(query_output.last_hidden_state), dim=-1)
-        #
-        #     sim_q2t = torch.matmul(query_feats.unsqueeze(1), text_embeds.unsqueeze(-1)).squeeze()
-        #     sim_q2t_max, _ = sim_q2t.max(-1)
-        #     sim_q2t_max = sim_q2t_max / model.temp  # [48, 174]
-        #
-        #     for index in range(sim_q2t_max.shape[0]):
-        #         # query_feats_repeat = query_feats[index].repeat(text_embeds.shape[0], 1, 1).cuda()  # [174, 32, 512]
-        #
-        #         query_tokens = model.query_tokens.expand(text_embeds.shape[0], -1, -1).cuda()
-        #         query_att_repeat = torch.ones(query_tokens.size()[:-1], dtype=torch.long).cuda()  # [174, 32]
-        #         attention_mask = torch.cat([query_att_repeat, text_atts], dim=1)  # [174, 62]
-        #
-        #         coord_feat_repeat = coord_feat[index].repeat(text_embeds.shape[0], 1, 1).to(device)  # [174, 33, 768]
-        #         coord_att_repeat = torch.ones(coord_feat_repeat.size()[:-1], dtype=torch.long).to(device)  # [174, 33]
-        #
-        #         rgb_feat_repeat = rgb_feat[index].repeat(text_embeds.shape[0], 1, 1).to(device)  # [48, 9, 768]
-        #         rgb_att_repeat = torch.ones(rgb_feat_repeat.size()[:-1], dtype=torch.long).to(device)  # [174, 9]
-        #
-        #         encoder_hidden_states = [coord_feat_repeat, rgb_feat_repeat]
-        #         encoder_attention_mask = [coord_att_repeat, rgb_att_repeat]
-        #
-        #         output = model.language_encoder(text_ids,
-        #                                         query_embeds=query_tokens,
-        #                                         attention_mask=attention_mask,
-        #                                         encoder_hidden_states=encoder_hidden_states,
-        #                                         encoder_attention_mask=encoder_attention_mask,
-        #                                         return_dict=True,
-        #                                         )
-        #
-        #         score = model.vtm_head(output.last_hidden_state[:, :query_tokens_vtm.size(1), :])[:, 1]
-        #
-        #         # scores_c2t[cur_iter * val_loader.batch_size + index] = sims_c2t[index] + score  # [174]
-        #         # scores_r2t[cur_iter * val_loader.batch_size + index] = sims_r2t[index] + score  # [174]
-        #         # scores_mix[cur_iter * val_loader.batch_size + index] = sims_c2t[index] + sims_r2t[index] + score  # [174]
-        #
-        #         # print(f"cur_iter: {cur_iter}  test_loader.batch_size:{val_loader.batch_size}  index:{index}  text_embeds.shape[0]:{text_embeds.shape[0]}")
-        #
-        #         # sim_r2t = sims_r2t[index]  # [174]
-        #         # sim_c2t = sims_c2t[index]  # [174]
-        #         #
-        #         # topk_sim_r2t, topk_r2t_idx = sim_r2t.topk(k=k_test, dim=0)  # [k_test], [k_test]
-        #         # topk_sim_c2t, topk_c2t_idx = sim_c2t.topk(k=k_test, dim=0)  # [k_test], [k_test]
-        #         #
-        #         # encoder_output = coord_feat[index].repeat(k_test, 1, 1).to(device)
-        #         # encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
-        #         # output_coord = model.language_encoder(text_ids[topk_c2t_idx],
-        #         #                                       attention_mask=text_atts[topk_c2t_idx],
-        #         #                                       encoder_hidden_states=encoder_output,
-        #         #                                       encoder_attention_mask=encoder_att,
-        #         #                                       return_dict=True,
-        #         #                                       mode='multimodal_pos'
-        #         #                                       )
-        #         # score_coord = model.vtm_head_coord(output_coord.last_hidden_state[:, 0, :])[:, 1]  # [174]
-        #         # scores_c2t[cur_iter * val_loader.batch_size + index, topk_c2t_idx] = score_coord + topk_sim_c2t
-        #         #
-        #         # encoder_output = rgb_feat[index].repeat(k_test, 1, 1).to(device)
-        #         # encoder_att = torch.ones(encoder_output.size()[:-1], dtype=torch.long).to(device)
-        #         # output_rgb = model.language_encoder(text_ids[topk_r2t_idx],
-        #         #                                     # text_ids[topk_r2t_idx],
-        #         #                                     # attention_mask=text_atts[topk_r2t_idx],
-        #         #                                     attention_mask=text_atts[topk_r2t_idx],
-        #         #                                     encoder_hidden_states=encoder_output,
-        #         #                                     encoder_attention_mask=encoder_att,
-        #         #                                     return_dict=True,
-        #         #                                     mode='multimodal_rgb'
-        #         #                                     )
-        #         # score_rgb = model.vtm_head_rgb(output_rgb.last_hidden_state[:, 0, :])[:, 1]  # [174]
-        #         # scores_r2t[cur_iter * val_loader.batch_size + index, topk_r2t_idx] = score_rgb + topk_sim_r2t
-        #
-        #     val_meter.iter_toc()  # measure allreduce for this meter
-        #     val_meter.log_iter_stats(cur_iter, len(val_loader), "cal_sims")
-        #     val_meter.iter_tic()
-        #
-        # # scores_mix = scores_c2t + scores_r2t  # [67977, 174]
-        #
-        # r1_r2t, r5_r2t = fusion_acc(scores_r2t.cpu().numpy(), val_loader.dataset.bbox_dataset.vision2text)
-        # r1_c2t, r5_c2t = fusion_acc(scores_c2t.cpu().numpy(), val_loader.dataset.bbox_dataset.vision2text)
-        # r1_mix, r5_mix = fusion_acc(scores_mix.cpu().numpy(), val_loader.dataset.bbox_dataset.vision2text)
-        #
-        # # Val 使用了sampler 多卡推理，因此最后验证结果需要重新汇总计算
-        # if cfg.NUM_GPUS > 1:
-        #     r1_c2t, r1_r2t, r1_mix = torch.tensor(r1_c2t).cuda(), torch.tensor(r1_r2t).cuda(), torch.tensor(r1_mix).cuda()
-        #     r5_c2t, r5_r2t, r5_mix = torch.tensor(r5_c2t).cuda(), torch.tensor(r5_r2t).cuda(), torch.tensor(r5_mix).cuda()
-        #     r1_c2t, r1_r2t, r1_mix, r5_c2t, r5_r2t, r5_mix = du.all_reduce([r1_c2t, r1_r2t, r1_mix, r5_c2t, r5_r2t, r5_mix], average=True)
-        #     r1_c2t, r1_r2t, r1_mix, r5_c2t, r5_r2t, r5_mix = r1_c2t.item(), r1_r2t.item(), r1_mix.item(), r5_c2t.item(), r5_r2t.item(), r5_mix.item()
-        #
-        # val_meter.update_predictions(r1_c2t, r5_c2t, r1_r2t, r5_r2t, r1_mix, r5_mix)
-        # flag = val_meter.log_final_stats(cur_epoch)
-        # val_meter.reset()
-        #
-        # # flag = True  # TODO: 这里需要重写 flag=True 意味着将会save best.pth
 
     else:
         for cur_iter, (inputs, labels, indexes, meta) in enumerate(val_loader):
@@ -742,7 +554,6 @@ def train(cfg):
 
     # Load a checkpoint to resume training if applicable.
     start_epoch = cu.load_train_checkpoint(cfg, model, optimizer, loss_scaler)
-    # # additional 设置学习率
     # if cfg.TRAIN.IS_RESET_EPOCH:
     #     for param_group in optimizer.param_groups:
     #         param_group['lr'] = cfg.SOLVER.BASE_LR
@@ -812,7 +623,6 @@ def train(cfg):
         if cfg.NUM_GPUS > 1:
             torch.distributed.barrier()
         train_loader.dataset.rgb_dataset.update_epoch_data(cur_epoch, dataset_or_feature='feature')
-        # val_loader.dataset.rgb_dataset.update_epoch_data(cur_epoch, dataset_or_feature='feature')  # TODO 测试val阶段是否需要重新打乱样本顺序
         if cfg.NUM_GPUS > 1:
             torch.distributed.barrier()
 
