@@ -1,30 +1,15 @@
 # Installation
 
-## Requirements
-- Python >= 3.7
-- Numpy
-- PyTorch >= 1.9 (Acceleration for 3D depth-wise convolution)
-- [fvcore](https://github.com/facebookresearch/fvcore/): `pip install 'git+https://github.com/facebookresearch/fvcore'`
-- [torchvision](https://github.com/pytorch/vision/) that matches the PyTorch installation.
-  You can install them together at [pytorch.org](https://pytorch.org) to make sure of this.
-- simplejson: `pip install simplejson`
-- GCC >= 4.9
-- PyAV: `conda install av -c conda-forge`
-- ffmpeg (4.0 is prefereed, will be installed along with PyAV)
-- PyYaml: (will be installed along with fvcore)
-- tqdm: (will be installed along with fvcore)
-- iopath: `pip install -U iopath` or `conda install -c iopath iopath`
-- psutil: `pip install psutil`
-- OpenCV: `pip install opencv-python`
-- torchvision: `pip install torchvision` or `conda install torchvision -c pytorch`
-- tensorboard: `pip install tensorboard`
-- moviepy: (optional, for visualizing video on tensorboard) `conda install -c conda-forge moviepy` or `pip install moviepy`
-- PyTorchVideo: `pip install pytorchvideo`
-- Decord: `pip install decord`
-
-## Build UniFormerV2
-
-After having the above dependencies, run:
+The required packages are in the file `requirements.txt`, and you can run the following command to install the environment
 ```
-python setup.py build develop
+conda create --name oovlm python=3.10 -y
+conda activate oovlm
+
+conda install pytorch==1.13.1 torchvision==0.14.1 torchaudio==0.13.1 -c pytorch
+
+pip install -r requirements.txt
 ```
+### Note:
+- **The above commands are for reference only**, please configure your own environment according to your needs.
+- We recommend installing **`PyTorch >= 1.12.0`**, which may greatly reduce the GPU memory usage.
+- It is recommended to install **`timm == 0.4.12`**, because some of the APIs we use are deprecated in the latest version of timm.
