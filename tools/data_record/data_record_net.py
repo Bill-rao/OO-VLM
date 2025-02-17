@@ -81,10 +81,6 @@ def perform_test(test_loader, model, test_meter, cfg, data_recorder: DataRecorde
 
 
 def test_feature(cfg):
-    """
-    用于测试得到的特征向量是否正确
-    注意仅仅适配了 测试代码 用于对比测试结果
-    """
     # Set up environment.
     du.init_distributed_training(cfg)
     # Set random seed from configs.
@@ -227,9 +223,6 @@ def get_feature_epoch(
 
 
 def test_get_feature(cfg):
-    """
-    用于获取 train dataset 下的model infer 输出
-    """
     # Set up environment.
     du.init_distributed_training(cfg)
     # Set random seed from configs.
@@ -305,36 +298,3 @@ def test_get_feature(cfg):
             f"{epoch_timer.avg_epoch_time() / len(get_feature_loader):.2f}s in average."
         )
 
-        # is_checkp_epoch = cu.is_checkpoint_epoch(
-        #     cfg,
-        #     cur_epoch,
-        #     None if multigrid is None else multigrid.schedule,
-        # )
-        # is_eval_epoch = misc.is_eval_epoch(
-        #     cfg, cur_epoch, None if multigrid is None else multigrid.schedule
-        # )
-
-        # # Compute precise BN stats.
-        # if (
-        #         cfg.BN.USE_PRECISE_STATS
-        #         and len(get_bn_modules(model)) > 0
-        # ):
-        #     calculate_and_update_precise_bn(
-        #         precise_bn_loader,
-        #         model,
-        #         min(cfg.BN.NUM_BATCHES_PRECISE, len(precise_bn_loader)),
-        #         cfg.NUM_GPUS > 0,
-        #     )
-        # _ = misc.aggregate_sub_bn_stats(model)
-
-    #     # Save a checkpoint.
-    #     if is_checkp_epoch or cfg.TRAIN.SAVE_LATEST:
-    #         cu.save_checkpoint(cfg.OUTPUT_DIR, model, optimizer, loss_scaler, cur_epoch, cfg)
-    #     # Evaluate the model on validation set.
-    #     if is_eval_epoch:
-    #         flag = eval_epoch(val_loader, model, val_meter, loss_scaler, cur_epoch, cfg, writer)
-    #         if flag:
-    #             cu.save_best_checkpoint(cfg.OUTPUT_DIR, model, optimizer, loss_scaler, cur_epoch, cfg)
-    #
-    # if writer is not None:
-    #     writer.close()

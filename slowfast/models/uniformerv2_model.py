@@ -276,7 +276,7 @@ class Transformer(nn.Module):
         cls = (1 - weight) * cls_token[0, :, :] + weight * residual
         cls = cls.unsqueeze(1)  # [N D] -> [N 1 D]
         feats = torch.cat([cls, x.view(L, N, T_down, C)[0]], dim=1).contiguous()  # [N 1+T D] NOTE:先cls 再 local feat
-        #
+
         # # cls_token = cls_token[0, :, :].unsqueeze(1)  # [1 N D] -> [N 1 D]
         # # # x.view(L, N, T_down, C): [197 N T D]
         # # # x.view(L, N, T_down, C)[0]: [N T D]

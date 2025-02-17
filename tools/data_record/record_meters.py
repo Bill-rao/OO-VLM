@@ -276,28 +276,6 @@ class TestMeter(object):
             )
         logging.log_json_stats(self.stats)
 
-        # self.stats = {"split": "test_final"}
-        # if self.multi_label:
-        #     map = get_map(
-        #         self.video_preds.cpu().numpy(), self.video_labels.cpu().numpy()
-        #     )
-        #     self.stats["map"] = map
-        # else:
-        #     num_topks_correct = metrics.topks_correct(
-        #         self.video_preds, self.video_labels, ks
-        #     )
-        #     topks = [
-        #         (x / self.video_preds.size(0)) * 100.0
-        #         for x in num_topks_correct
-        #     ]
-        #     assert len({len(ks), len(topks)}) == 1
-        #     for k, topk in zip(ks, topks):
-        #         self.stats["top{}_acc".format(k)] = "{:.{prec}f}".format(
-        #             topk, prec=2
-        #         )
-        # logging.log_json_stats(self.stats)
-
-
 class ScalarMeter(object):
     """
     A scalar meter uses a deque to track a series of scaler values with a given

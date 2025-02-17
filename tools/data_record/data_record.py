@@ -119,9 +119,6 @@ class DataRecorder(Dataset):
             return transferred_tensor
 
     def update_dataset_data(self, rgb_data, sample_index, label, epoch):
-        """
-        设定为一个epoch保存一次数据
-        """
         assert isinstance(rgb_data, torch.Tensor) and isinstance(sample_index, torch.Tensor) and isinstance(label, torch.Tensor)
         assert isinstance(epoch, int)
         self.transfer_tensor_device(rgb_data, 'cpu')
@@ -155,12 +152,6 @@ class DataRecorder(Dataset):
 
     def update_feature_data(self, feature_data: torch.Tensor, sample_index: torch.Tensor, label: torch.Tensor,
                             video_index: torch.Tensor, epoch: int):
-        """
-        feature_data: 特征向量
-        sample_index: dataset采样的 get_item 的采样索引
-        label: 样本label
-        video_index: 视频样本索引
-        """
 
         assert isinstance(feature_data, torch.Tensor) and isinstance(sample_index, torch.Tensor)
         assert isinstance(label, torch.Tensor) and isinstance(video_index, torch.Tensor)
@@ -171,13 +162,13 @@ class DataRecorder(Dataset):
         label = self.transfer_tensor_device(label, 'cpu')
         video_index = self.transfer_tensor_device(video_index, 'cpu')
 
-        if self.current_feature_epoch + 1 == epoch:  # 切换epoch，自动保存文件，然后清空缓存
+        if self.current_feature_epoch + 1 == epoch:
             # save
             logger.info(f"Epoch is changed ({self.current_feature_epoch} -> {epoch}), the feature data will saved")
             self.save_feature_data()
             self.current_feature_epoch = epoch
 
-        if self.current_feature_epoch == epoch:  # 还在同一个epoch内或者进入新的epoch，则缓存 feature 数据
+        if self.current_feature_epoch == epoch:
             logger.info(f"caching feature data---epoch:{epoch} feature_data: {feature_data.shape} sample_index:{sample_index.shape} label:{label.shape} video_index:{video_index.shape}")
             if 'feature_data' not in self.feature_data.keys():
                 self.feature_data = {'feature_data': feature_data, 'sample_index': sample_index, 'label': label, 'video_index': video_index}
@@ -190,9 +181,6 @@ class DataRecorder(Dataset):
             raise RuntimeError(f"current_feature_epoch({self.current_feature_epoch}) does not match the input epoch({epoch})")
 
     def clear_duplicates_of_feature_data(self):
-        """
-        当使用多卡get feature时，由于 drop last = False，因此当剩余sample不够batchsize的时候，会导致样本重复采样，这里会删除被重复采样的样本
-        """
         logger.info(f"num of samples: {self.feature_data['sample_index'].shape[0]}")
         duplicates = self.find_duplicates_with_indices(self.feature_data['sample_index'].tolist())
         logger.info(f"duplicates(sample_index)[sample_index: [position_index]]: {duplicates}")
@@ -229,14 +217,12 @@ class DataRecorder(Dataset):
 
     def find_duplicates_with_indices(self, lst):
         element_indices = {}
-        # 收集元素及其所有索引
         for index, element in enumerate(lst):
             if element in element_indices:
                 element_indices[element].append(index)
             else:
                 element_indices[element] = [index]
 
-        # 筛选出有多个索引的元素，即重复的元素
         duplicates = {
             element: indices
             for element, indices in element_indices.items()
@@ -250,9 +236,7 @@ class DataRecorder(Dataset):
         if not isinstance(B, list):
             B = list(B)
 
-        # 将B转换为集合
         set_B = set(B)
-        # 使用列表推导，只保留A中不在set_B的元素
         return [item for item in A if item not in set_B]
 
     def reset_epoch_count(self, dataset_or_feature: 'str'):
