@@ -46,7 +46,7 @@ You can find the dataset instructions in [DATASET](DATASET.md). We provide all t
 
 For testing, you can simply run the testing script in `exp` as follows:
 ```shell
-source ./source exp/data_record/videomaev2_giant/test.sh
+source ./exp/data_record/videomaev2_giant/test.sh
 ```
 Before running the test, make sure to properly configure the parameters of the script.
 
