@@ -5,7 +5,7 @@ This repo is the official implementation of "OO-VLM: An Object-Oriented Video-La
 ## Update
 
 **[2/17/2025]**
-Code have been released!
+Code and models have been released!
 
 ## Introduction
 
