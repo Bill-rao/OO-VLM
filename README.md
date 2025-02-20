@@ -9,7 +9,7 @@ Code and models have been released!
 
 ## Introduction
 
-![PWC](Structure.png)
+![PWC](Model_Overview.svg)
 In OO-VLM, we introduce an object-oriented videolanguage model (OO-VLM) for egocentric action recognition.
 This model explicitly structures vision-language reasoning around
 objects as fundamental units, leveraging object-centric learning
